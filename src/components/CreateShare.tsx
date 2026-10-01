@@ -53,7 +53,7 @@ export const CreateShare = () => {
 
   const uploadFile = async (file: File, linkId: string) => {
     const fileExt = file.name.split('.').pop();
-    const fileName = `${linkId}.${fileExt}`;
+    const fileName = linkId + '.' + fileExt;
     const filePath = fileName;
 
     const { error } = await supabase.storage
