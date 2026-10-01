@@ -1,11 +1,31 @@
 import React, { useEffect, useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { FileText, Download, Eye, Calendar, Clock, AlertTriangle, Copy, Image as ImageIcon } from 'lucide-react';
+import {
+  FileText,
+  Download,
+  Eye,
+  Calendar,
+  Clock,
+  AlertTriangle,
+  Copy,
+  Image as ImageIcon,
+  Check,
+  Link2,
+  ArrowLeft,
+  ExternalLink,
+  File,
+} from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 
 interface SharedLink {
   id: string;
@@ -24,12 +44,15 @@ interface SharedLink {
 
 export const ViewShare = () => {
   const { linkId } = useParams<{ linkId: string }>();
+  const navigate = useNavigate();
+  const { toast } = useToast();
+
   const [shareData, setShareData] = useState<SharedLink | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hasIncrementedView, setHasIncrementedView] = useState(false);
   const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
-  const { toast } = useToast();
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (linkId) {
@@ -37,11 +60,21 @@ export const ViewShare = () => {
     }
   }, [linkId]);
 
+  useEffect(() => {
+    return () => {
+      if (filePreviewUrl) {
+        URL.revokeObjectURL(filePreviewUrl);
+      }
+    };
+  }, [filePreviewUrl]);
+
   const fetchShare = async () => {
     try {
-      // Clean up expired shares before fetching
+      setLoading(true);
+      setError(null);
+
       await supabase.rpc('cleanup_expired_shares');
-      
+
       const { data, error } = await supabase
         .from('shared_links')
         .select('*')
@@ -54,18 +87,17 @@ export const ViewShare = () => {
         } else {
           setError('Failed to load share');
         }
+
         setLoading(false);
         return;
       }
 
-      // Check if expired
       if (data.expires_at && new Date(data.expires_at) < new Date()) {
         setError('This share has expired');
         setLoading(false);
         return;
       }
 
-      // Check if view limit reached
       if (data.max_views && data.view_count >= data.max_views) {
         setError('This share has reached its view limit');
         setLoading(false);
@@ -73,31 +105,55 @@ export const ViewShare = () => {
       }
 
       setShareData(data as SharedLink);
-      
-      // Increment view count only once per page load
+
       if (!hasIncrementedView) {
-        await supabase.rpc('increment_view_count', { link_id: data.id });
-        setHasIncrementedView(true);
-        // Update local data to reflect the incremented view count
-        setShareData(prev => prev ? { ...prev, view_count: prev.view_count + 1 } : null);
+        const { error: viewError } = await supabase.rpc(
+          'increment_view_count',
+          {
+            link_id: data.id,
+          }
+        );
+
+        if (!viewError) {
+          setHasIncrementedView(true);
+
+          setShareData((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  view_count: prev.view_count + 1,
+                }
+              : null
+          );
+        }
       }
 
-      // Load file preview for image files
-      if (data.content_type === 'file' && data.file_path && data.file_name?.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+      const isImage =
+        data.content_type === 'file' &&
+        data.file_path &&
+        data.file_name?.match(
+          /\.(jpg|jpeg|png|gif|webp|svg|avif)$/i
+        );
+
+      if (isImage) {
         try {
-          const { data: fileData, error: fileError } = await supabase.storage
-            .from('shared-files')
-            .download(data.file_path);
-          
+          const { data: fileData, error: fileError } =
+            await supabase.storage
+              .from('shared-files')
+              .download(data.file_path);
+
           if (!fileError && fileData) {
             const url = URL.createObjectURL(fileData);
             setFilePreviewUrl(url);
           }
-        } catch (err) {
-          console.error('Error loading file preview:', err);
+        } catch (previewError) {
+          console.error(
+            'Error loading file preview:',
+            previewError
+          );
         }
       }
-      
+
       setLoading(false);
     } catch (err) {
       console.error('Error fetching share:', err);
@@ -118,14 +174,25 @@ export const ViewShare = () => {
 
       const url = URL.createObjectURL(data);
       const a = document.createElement('a');
+
       a.href = url;
       a.download = shareData.file_name || 'download';
+
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+      }, 1000);
+
+      toast({
+        title: 'Download started',
+        description: shareData.file_name || 'Your file is being downloaded.',
+      });
     } catch (err) {
       console.error('Error downloading file:', err);
+
       toast({
         title: 'Download Failed',
         description: 'Failed to download file. Please try again.',
@@ -134,210 +201,553 @@ export const ViewShare = () => {
     }
   };
 
-  const copyToClipboard = (text: string, type: string) => {
-    navigator.clipboard.writeText(text).then(() => {
+  const copyToClipboard = async (
+    text: string,
+    type: string
+  ) => {
+    try {
+      await navigator.clipboard.writeText(text);
+
+      setCopied(true);
+
       toast({
         title: 'Copied!',
-        description: `${type} copied to clipboard`,
+        description: type + ' copied to clipboard.',
       });
-    }).catch(() => {
+
+      setTimeout(() => {
+        setCopied(false);
+      }, 2000);
+    } catch {
       toast({
         title: 'Copy Failed',
-        description: 'Failed to copy to clipboard',
+        description: 'Failed to copy to clipboard.',
         variant: 'destructive',
       });
-    });
+    }
+  };
+
+  const copyShareLink = () => {
+    const url =
+      window.location.origin +
+      '/' +
+      (shareData?.custom_link || linkId || '');
+
+    copyToClipboard(url, 'Share link');
   };
 
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return '0 Bytes';
+
     const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+
+    return (
+      parseFloat(
+        (bytes / Math.pow(k, i)).toFixed(2)
+      ) +
+      ' ' +
+      sizes[i]
+    );
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    return new Date(dateString).toLocaleDateString(
+      'en-US',
+      {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      }
+    );
   };
 
   const getRemainingViews = () => {
     if (!shareData?.max_views) return null;
-    return shareData.max_views - shareData.view_count;
+
+    return Math.max(
+      0,
+      shareData.max_views - shareData.view_count
+    );
   };
 
   const getTimeUntilExpiry = () => {
     if (!shareData?.expires_at) return null;
-    const expiryDate = new Date(shareData.expires_at);
+
+    const expiryDate = new Date(
+      shareData.expires_at
+    );
+
     const now = new Date();
-    const diffTime = expiryDate.getTime() - now.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
-    if (diffDays <= 0) return 'Expired';
-    if (diffDays === 1) return '1 day';
-    return `${diffDays} days`;
+
+    const diffTime =
+      expiryDate.getTime() - now.getTime();
+
+    const diffMinutes = Math.ceil(
+      diffTime / (1000 * 60)
+    );
+
+    if (diffMinutes <= 0) return 'Expired';
+
+    if (diffMinutes < 60) {
+      return diffMinutes + ' min';
+    }
+
+    const diffHours = Math.ceil(
+      diffMinutes / 60
+    );
+
+    if (diffHours < 24) {
+      return diffHours + ' hr';
+    }
+
+    const diffDays = Math.ceil(
+      diffHours / 24
+    );
+
+    if (diffDays === 1) {
+      return '1 day';
+    }
+
+    return diffDays + ' days';
   };
+
+  const isImageFile =
+    shareData?.file_name?.match(
+      /\.(jpg|jpeg|png|gif|webp|svg|avif)$/i
+    );
+
+  const isPdfFile =
+    shareData?.file_name?.match(/\.pdf$/i);
+
+  const isCodeFile =
+    shareData?.file_name?.match(
+      /\.(js|jsx|ts|tsx|py|java|c|cpp|cs|html|css|json|xml|sql|md|txt|sh|yml|yaml)$/i
+    );
 
   if (loading) {
     return (
-      <div className="max-w-2xl mx-auto p-6 animate-fade-in">
-        <Card className="shadow-elegant">
-          <CardContent className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-          </CardContent>
-        </Card>
+      <div className="min-h-screen bg-background px-4 py-8 sm:px-6 lg:px-8">
+        <div className="mx-auto w-full max-w-3xl">
+          <Card className="border-border shadow-sm">
+            <CardContent className="flex min-h-[280px] items-center justify-center">
+              <div className="flex flex-col items-center gap-4">
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-primary" />
+                <p className="text-sm text-muted-foreground">
+                  Loading share...
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="max-w-2xl mx-auto p-6 animate-fade-in">
-        <Card className="shadow-elegant border-destructive/20">
-          <CardContent className="text-center py-12">
-            <AlertTriangle className="h-12 w-12 text-destructive mx-auto mb-4" />
-            <h2 className="text-xl font-semibold mb-2">Oops!</h2>
-            <p className="text-muted-foreground">{error}</p>
-          </CardContent>
-        </Card>
+      <div className="min-h-screen bg-background px-4 py-8 sm:px-6 lg:px-8">
+        <div className="mx-auto flex min-h-[70vh] w-full max-w-xl items-center justify-center">
+          <Card className="w-full border-destructive/20 shadow-sm">
+            <CardContent className="px-5 py-12 text-center sm:px-8">
+              <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center border border-destructive/20 bg-destructive/5">
+                <AlertTriangle className="h-6 w-6 text-destructive" />
+              </div>
+
+              <h2 className="text-xl font-semibold tracking-tight">
+                {error === 'Share not found'
+                  ? 'Share not found'
+                  : 'This share is unavailable'}
+              </h2>
+
+              <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-muted-foreground">
+                {error}
+              </p>
+
+              <Button
+                variant="outline"
+                className="mt-6"
+                onClick={() => navigate('/')}
+              >
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back to NoteShare
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     );
   }
 
   if (!shareData) return null;
 
+  const remainingViews = getRemainingViews();
+  const expiryText = getTimeUntilExpiry();
+
   return (
-    <div className="max-w-2xl mx-auto p-6 animate-fade-in">
-      <Card className="shadow-elegant hover-lift">
-        <CardHeader>
-          <div className="flex items-start justify-between">
-            <div className="space-y-2">
-              <CardTitle className="text-2xl">{shareData.title}</CardTitle>
-              <CardDescription className="flex items-center gap-2">
-                <Clock className="h-4 w-4" />
-                Created {formatDate(shareData.created_at)}
-              </CardDescription>
-            </div>
-            <Badge variant={shareData.content_type === 'note' ? 'default' : 'secondary'}>
-              {shareData.content_type === 'note' ? (
-                <><FileText className="h-3 w-3 mr-1" /> Note</>
-              ) : (
-                <><Download className="h-3 w-3 mr-1" /> File</>
-              )}
-            </Badge>
-          </div>
-        </CardHeader>
+    <div className="min-h-screen bg-background">
+      {/* Top bar */}
+      <header className="border-b border-border">
+        <div className="mx-auto flex min-h-14 w-full max-w-5xl items-center justify-between gap-3 px-4 sm:px-6">
+          <button
+            onClick={() => navigate('/')}
+            className="flex min-w-0 items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4 shrink-0" />
+            <span className="truncate">
+              NoteShare
+            </span>
+          </button>
 
-        <CardContent className="space-y-6">
-          {/* Content */}
-          {shareData.content_type === 'note' ? (
-            <div className="space-y-4">
-              <div className="p-4 bg-muted rounded-lg relative">
-                <Button
-                  size="sm"
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={copyShareLink}
+            className="shrink-0"
+          >
+            {copied ? (
+              <Check className="mr-2 h-4 w-4" />
+            ) : (
+              <Link2 className="mr-2 h-4 w-4" />
+            )}
+            <span className="hidden sm:inline">
+              {copied ? 'Copied' : 'Copy link'}
+            </span>
+            <span className="sm:hidden">
+              {copied ? 'Copied' : 'Copy'}
+            </span>
+          </Button>
+        </div>
+      </header>
+
+      <main className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-10">
+        {/* Header */}
+        <div className="mb-6 border-b border-border pb-6 sm:mb-8 sm:pb-8">
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <Badge
                   variant="outline"
-                  onClick={() => copyToClipboard(shareData.note_content || '', 'Note content')}
-                  className="absolute top-2 right-2"
+                  className="rounded-none"
                 >
-                  <Copy className="h-3 w-3 mr-1" />
-                  Copy
-                </Button>
-                <pre className="whitespace-pre-wrap font-sans leading-relaxed pr-16">
-                  {shareData.note_content}
-                </pre>
+                  {shareData.content_type === 'note' ? (
+                    <>
+                      <FileText className="mr-1.5 h-3 w-3" />
+                      Note
+                    </>
+                  ) : (
+                    <>
+                      <File className="mr-1.5 h-3 w-3" />
+                      File
+                    </>
+                  )}
+                </Badge>
+
+                {isImageFile && (
+                  <Badge
+                    variant="outline"
+                    className="rounded-none"
+                  >
+                    <ImageIcon className="mr-1.5 h-3 w-3" />
+                    Image
+                  </Badge>
+                )}
+              </div>
+
+              <h1 className="break-words text-2xl font-semibold tracking-tight sm:text-3xl">
+                {shareData.title}
+              </h1>
+
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground sm:text-sm">
+                <span className="flex items-center gap-1.5">
+                  <Clock className="h-3.5 w-3.5" />
+                  {formatDate(shareData.created_at)}
+                </span>
+
+                <span className="flex items-center gap-1.5">
+                  <Eye className="h-3.5 w-3.5" />
+                  {shareData.view_count} views
+                </span>
               </div>
             </div>
-          ) : (
-            <div className="space-y-4">
-              {/* File Preview for Images */}
-              {filePreviewUrl && (
-                <div className="bg-muted rounded-lg p-4">
-                  <p className="text-sm text-muted-foreground mb-3 flex items-center gap-2">
-                    <ImageIcon className="h-4 w-4" />
-                    Preview
-                  </p>
-                  <img 
-                    src={filePreviewUrl} 
-                    alt={shareData.file_name}
-                    className="max-w-full h-auto rounded-lg border max-h-96 mx-auto"
-                  />
-                </div>
+
+            <Button
+              variant="outline"
+              onClick={copyShareLink}
+              className="w-full shrink-0 sm:w-auto"
+            >
+              {copied ? (
+                <Check className="mr-2 h-4 w-4" />
+              ) : (
+                <Copy className="mr-2 h-4 w-4" />
               )}
-              
-              <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
-                    {shareData.file_name?.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? (
-                      <ImageIcon className="h-5 w-5 text-primary" />
-                    ) : (
-                      <FileText className="h-5 w-5 text-primary" />
-                    )}
+              {copied ? 'Copied' : 'Share link'}
+            </Button>
+          </div>
+        </div>
+
+        {/* Main content */}
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_240px] lg:items-start">
+          <section className="min-w-0">
+            {shareData.content_type === 'note' ? (
+              <div className="border border-border bg-card">
+                {/* Note toolbar */}
+                <div className="flex flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <FileText className="h-4 w-4 text-muted-foreground" />
+                    Note content
                   </div>
-                  <div>
-                    <p className="font-medium">{shareData.file_name}</p>
-                    {shareData.file_size && (
-                      <p className="text-sm text-muted-foreground">
-                        {formatFileSize(shareData.file_size)}
-                      </p>
+
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      copyToClipboard(
+                        shareData.note_content || '',
+                        'Note content'
+                      )
+                    }
+                    className="w-full sm:w-auto"
+                  >
+                    {copied ? (
+                      <Check className="mr-2 h-3.5 w-3.5" />
+                    ) : (
+                      <Copy className="mr-2 h-3.5 w-3.5" />
                     )}
+                    {copied ? 'Copied' : 'Copy'}
+                  </Button>
+                </div>
+
+                {/* Note body */}
+                <div className="overflow-x-auto">
+                  <div
+                    className={
+                      'min-w-0 whitespace-pre-wrap break-words px-4 py-5 text-[15px] leading-7 sm:px-6 sm:py-7 sm:text-base ' +
+                      (isCodeFile
+                        ? 'font-mono text-sm leading-6'
+                        : 'font-sans')
+                    }
+                  >
+                    {shareData.note_content}
                   </div>
                 </div>
-                <Button onClick={downloadFile} className="gradient-primary text-white">
-                  <Download className="h-4 w-4 mr-2" />
-                  Download
-                </Button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* Image preview */}
+                {filePreviewUrl && (
+                  <div className="border border-border bg-card">
+                    <div className="flex items-center justify-between border-b border-border px-4 py-3">
+                      <div className="flex items-center gap-2 text-sm font-medium">
+                        <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                        Preview
+                      </div>
+
+                      <span className="text-xs text-muted-foreground">
+                        {shareData.file_name}
+                      </span>
+                    </div>
+
+                    <div className="flex min-h-[220px] items-center justify-center overflow-hidden bg-muted/30 p-3 sm:min-h-[360px] sm:p-6">
+                      <img
+                        src={filePreviewUrl}
+                        alt={shareData.file_name || 'Shared image'}
+                        className="max-h-[70vh] max-w-full object-contain"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* File card */}
+                <div className="border border-border bg-card">
+                  <div className="flex flex-col gap-5 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center border border-border bg-muted">
+                        {isImageFile ? (
+                          <ImageIcon className="h-5 w-5 text-primary" />
+                        ) : (
+                          <FileText className="h-5 w-5 text-primary" />
+                        )}
+                      </div>
+
+                      <div className="min-w-0">
+                        <p className="break-all text-sm font-medium sm:text-base">
+                          {shareData.file_name || 'Shared file'}
+                        </p>
+
+                        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                          {shareData.file_size && (
+                            <span>
+                              {formatFileSize(
+                                shareData.file_size
+                              )}
+                            </span>
+                          )}
+
+                          {shareData.file_size &&
+                            shareData.file_name && (
+                              <span>•</span>
+                            )}
+
+                          {isPdfFile && (
+                            <span>PDF document</span>
+                          )}
+
+                          {isImageFile && (
+                            <span>Image</span>
+                          )}
+
+                          {!isPdfFile &&
+                            !isImageFile && (
+                              <span>File</span>
+                            )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <Button
+                      onClick={downloadFile}
+                      className="w-full shrink-0 sm:w-auto"
+                    >
+                      <Download className="mr-2 h-4 w-4" />
+                      Download
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </section>
+
+          {/* Information panel */}
+          <aside className="space-y-3">
+            <div className="border border-border bg-card">
+              <div className="border-b border-border px-4 py-3">
+                <p className="text-sm font-medium">
+                  Share details
+                </p>
+              </div>
+
+              <div className="divide-y divide-border">
+                <div className="px-4 py-3">
+                  <p className="text-xs text-muted-foreground">
+                    Created
+                  </p>
+                  <p className="mt-1 text-sm">
+                    {formatDate(
+                      shareData.created_at
+                    )}
+                  </p>
+                </div>
+
+                <div className="px-4 py-3">
+                  <p className="text-xs text-muted-foreground">
+                    Views
+                  </p>
+                  <p className="mt-1 text-sm">
+                    {shareData.view_count}
+                    {shareData.max_views
+                      ? ' / ' + shareData.max_views
+                      : ''}
+                  </p>
+                </div>
+
+                {remainingViews !== null && (
+                  <div className="px-4 py-3">
+                    <p className="text-xs text-muted-foreground">
+                      Remaining views
+                    </p>
+                    <p className="mt-1 text-sm">
+                      {remainingViews}
+                    </p>
+                  </div>
+                )}
+
+                {expiryText && (
+                  <div className="px-4 py-3">
+                    <p className="text-xs text-muted-foreground">
+                      Expires
+                    </p>
+                    <p className="mt-1 flex items-center gap-1.5 text-sm">
+                      <Calendar className="h-3.5 w-3.5" />
+                      {expiryText}
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
-          )}
 
-          {/* Stats and Info */}
-          <div className="flex flex-wrap gap-2">
-            <Badge variant="outline" className="flex items-center gap-1">
-              <Eye className="h-3 w-3" />
-              {shareData.view_count} views
-            </Badge>
-            
-            {shareData.max_views && (
-              <Badge variant="outline" className="flex items-center gap-1">
-                <Eye className="h-3 w-3" />
-                {getRemainingViews()} remaining
-              </Badge>
+            {/* Mobile-friendly action */}
+            {shareData.content_type === 'file' && (
+              <Button
+                variant="outline"
+                onClick={downloadFile}
+                className="w-full lg:hidden"
+              >
+                <Download className="mr-2 h-4 w-4" />
+                Download file
+              </Button>
             )}
-            
-            {shareData.expires_at && (
-              <Badge variant="outline" className="flex items-center gap-1">
-                <Calendar className="h-3 w-3" />
-                Expires in {getTimeUntilExpiry()}
-              </Badge>
+          </aside>
+        </div>
+
+        {/* Warnings */}
+        <div className="mt-6 space-y-3">
+          {remainingViews !== null &&
+            remainingViews <= 5 &&
+            remainingViews > 0 && (
+              <div className="flex items-start gap-3 border border-yellow-200 bg-yellow-50 px-4 py-3 dark:border-yellow-900 dark:bg-yellow-950/30">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-yellow-700 dark:text-yellow-400" />
+
+                <div>
+                  <p className="text-sm font-medium text-yellow-900 dark:text-yellow-300">
+                    Limited views remaining
+                  </p>
+
+                  <p className="mt-0.5 text-xs text-yellow-800 dark:text-yellow-400">
+                    This share can be viewed {remainingViews}{' '}
+                    more{' '}
+                    {remainingViews === 1
+                      ? 'time'
+                      : 'times'}.
+                  </p>
+                </div>
+              </div>
             )}
-          </div>
 
-          {/* Warning messages */}
-          {shareData.max_views && getRemainingViews()! <= 5 && getRemainingViews()! > 0 && (
-            <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-              <p className="text-sm text-yellow-800 dark:text-yellow-200 flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4" />
-                Only {getRemainingViews()} views remaining
-              </p>
-            </div>
-          )}
+          {expiryText &&
+            (expiryText === '1 day' ||
+              expiryText === '1 hr' ||
+              expiryText.includes('min')) && (
+              <div className="flex items-start gap-3 border border-red-200 bg-red-50 px-4 py-3 dark:border-red-900 dark:bg-red-950/30">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-700 dark:text-red-400" />
 
-          {shareData.expires_at && getTimeUntilExpiry() && getTimeUntilExpiry()!.includes('1 day') && (
-            <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-              <p className="text-sm text-red-800 dark:text-red-200 flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4" />
-                This share expires in {getTimeUntilExpiry()}
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                <div>
+                  <p className="text-sm font-medium text-red-900 dark:text-red-300">
+                    This share expires soon
+                  </p>
+
+                  <p className="mt-0.5 text-xs text-red-800 dark:text-red-400">
+                    It will expire in {expiryText}.
+                  </p>
+                </div>
+              </div>
+            )}
+        </div>
+
+        {/* Footer */}
+        <footer className="mt-10 border-t border-border pt-5 pb-8 text-center">
+          <button
+            onClick={() => navigate('/')}
+            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+          >
+            Shared with NoteShare
+            <ExternalLink className="h-3 w-3" />
+          </button>
+        </footer>
+      </main>
     </div>
   );
 };
