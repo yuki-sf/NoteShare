@@ -202,7 +202,7 @@ export const CreateShare = () => {
         JSON.stringify(existingShares)
       );
 
-      const url = `${window.location.origin}/${finalCustomLink}`;
+      const url = window.location.origin + '/' + finalCustomLink;
 
       setShareUrl(url);
 
