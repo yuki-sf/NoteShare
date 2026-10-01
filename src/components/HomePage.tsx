@@ -13,6 +13,13 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
+const navigateWithQuery = (path: string) => {
+  const params = new URLSearchParams(window.location.search);
+  const query = params.toString();
+
+  navigate(query ? path + '?' + query : path);
+};
+
 const isPortfolioEmbed = () => {
   const params = new URLSearchParams(window.location.search);
   return params.get('source') === 'yukisf';
@@ -84,7 +91,7 @@ export const HomePage = () => {
 
               <div className="mt-9 flex flex-col gap-3 sm:flex-row">
                 <button
-                  onClick={() => navigate('/create')}
+                  onClick={() => navigateWithQuery('/create')}
                   className="group inline-flex h-12 items-center justify-center gap-2 bg-primary px-6 text-sm font-medium text-primary-foreground transition-transform hover:-translate-y-0.5"
                 >
                   Create a share
@@ -310,7 +317,7 @@ export const HomePage = () => {
               </div>
 
               <button
-                onClick={() => navigate('/create')}
+                onClick={() => navigateWithQuery('/create')}
                 className="inline-flex h-10 items-center justify-center border border-border bg-background px-4 text-sm font-medium transition-colors hover:bg-muted"
               >
                 Create another
@@ -404,7 +411,7 @@ export const HomePage = () => {
             </div>
 
             <button
-              onClick={() => navigate('/create')}
+              onClick={() => navigateWithQuery('/create')}
               className="group inline-flex h-12 items-center justify-center gap-2 bg-primary px-6 text-sm font-medium text-primary-foreground transition-transform hover:-translate-y-0.5"
             >
               Create a share
