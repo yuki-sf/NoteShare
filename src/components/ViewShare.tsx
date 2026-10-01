@@ -45,6 +45,18 @@ interface SharedLink {
 export const ViewShare = () => {
   const { linkId } = useParams<{ linkId: string }>();
   const navigate = useNavigate();
+
+  const navigateWithQuery = (path: string) => {
+    const params = new URLSearchParams(window.location.search);
+    const query = params.toString();
+  
+    if (query) {
+      navigate(path + '?' + query);
+    } else {
+      navigate(path);
+    }
+  };
+  
   const { toast } = useToast();
 
   const [shareData, setShareData] = useState<SharedLink | null>(null);
@@ -432,7 +444,7 @@ export const ViewShare = () => {
               <Button
                 variant="outline"
                 className="mt-6"
-                onClick={() => navigate('/')}
+                onClick={() => navigateWithQuery('/')}
               >
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Back to NoteShare
@@ -455,7 +467,7 @@ export const ViewShare = () => {
       <header className="border-b border-border">
         <div className="mx-auto flex min-h-14 w-full max-w-5xl items-center justify-between gap-3 px-4 sm:px-6">
           <button
-            onClick={() => navigate('/')}
+            onClick={() => navigateWithQuery('/')}
             className="flex min-w-0 items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
           >
             <ArrowLeft className="h-4 w-4 shrink-0" />
@@ -802,7 +814,7 @@ export const ViewShare = () => {
         {/* Footer */}
         <footer className="mt-10 border-t border-border pt-5 pb-8 text-center">
           <button
-            onClick={() => navigate('/')}
+            onClick={() => navigateWithQuery('/')}
             className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
           >
             Shared with NoteShare
