@@ -101,7 +101,7 @@ export const HomePage = () => {
                 </button>
 
                 <button
-                  onClick={() => window.open('/example-note', '_blank')}
+                  onClick={() => navigateWithQuery('/example-note')}
                   className="inline-flex h-12 items-center justify-center gap-2 border border-border px-6 text-sm font-medium transition-colors hover:bg-muted"
                 >
                   See an example
