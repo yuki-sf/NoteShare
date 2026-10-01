@@ -31,6 +31,26 @@ export const CreateShare = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
 
+  const isPortfolioEmbed = () => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('source') === 'yukisf';
+  };
+  
+  const getShareUrl = (customLink: string) => {
+    if (isPortfolioEmbed()) {
+      return (
+        'https://yukisf.me/note-share/' +
+        customLink
+      );
+    }
+  
+    return (
+      window.location.origin +
+      '/' +
+      customLink
+    );
+  };
+
   const validateCustomLink = (link: string) => {
     const regex = /^[a-zA-Z0-9_-]+$/;
     return regex.test(link) && link.length >= 3 && link.length <= 50;
@@ -201,8 +221,8 @@ export const CreateShare = () => {
         JSON.stringify(existingShares)
       );
 
-      const url = window.location.origin + '/' + finalCustomLink;
-
+      const url = getShareUrl(finalCustomLink);
+      
       setShareUrl(url);
 
       toast({
