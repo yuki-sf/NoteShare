@@ -31,6 +31,13 @@ export const CreateShare = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
 
+  const navigateWithQuery = (path: string) => {
+    const params = new URLSearchParams(window.location.search);
+    const query = params.toString();
+  
+    navigate(query ? path + '?' + query : path);
+  };
+
   const isPortfolioEmbed = () => {
     const params = new URLSearchParams(window.location.search);
     return params.get('source') === 'yukisf';
@@ -283,7 +290,7 @@ export const CreateShare = () => {
         <div className="mx-auto max-w-3xl px-5 py-10 sm:px-8 lg:py-16">
 
           <button
-            onClick={() => navigate('/')}
+            onClick={() => navigateWithQuery('/')}
             className="mb-12 inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
           >
             <ArrowLeft className="h-4 w-4" />
@@ -406,7 +413,7 @@ export const CreateShare = () => {
       <header className="border-b">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 sm:px-8 lg:px-10">
           <button
-            onClick={() => navigate('/')}
+            onClick={() => navigateWithQuery('/')}
             className="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
           >
             <ArrowLeft className="h-4 w-4" />
@@ -758,7 +765,7 @@ export const CreateShare = () => {
             {/* Submit */}
             <div className="flex flex-col-reverse gap-3 pt-8 sm:flex-row sm:justify-end">
               <button
-                onClick={() => navigate('/')}
+                onClick={() => navigateWithQuery('/')}
                 className="h-12 border border-border px-6 text-sm font-medium transition-colors hover:bg-muted"
               >
                 Cancel
