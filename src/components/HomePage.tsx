@@ -13,6 +13,12 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
+const isPortfolioEmbed = () => {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('source') === 'yukisf';
+};
+
+
 interface UserShare {
   id: string;
   title: string;
@@ -171,7 +177,9 @@ export const HomePage = () => {
 
                     <div className="flex items-center justify-between gap-3 border bg-muted/30 px-3 py-2.5">
                       <span className="truncate text-sm">
-                        {window.location.hostname}/example-note
+                        {isPortfolioEmbed()
+                          ? 'yukisf.me/note-share/my-note'
+                          : window.location.hostname + '/my-note'}
                       </span>
 
                       <Link2 className="h-4 w-4 shrink-0 text-muted-foreground" />
