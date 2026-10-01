@@ -1,12 +1,19 @@
+```tsx
 import React, { useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Badge } from '@/components/ui/badge';
-import { Upload, Link2, Calendar, Eye, FileText, Image, ArrowLeft } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowUpRight,
+  Calendar,
+  Check,
+  Copy,
+  Eye,
+  FileText,
+  Image,
+  Link2,
+  Shield,
+  Upload,
+  X,
+} from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
@@ -20,6 +27,8 @@ export const CreateShare = () => {
   const [expirationDays, setExpirationDays] = useState<number | ''>('');
   const [maxViews, setMaxViews] = useState<number | ''>('');
   const [shareUrl, setShareUrl] = useState('');
+  const [contentType, setContentType] = useState<'note' | 'file'>('note');
+
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -34,11 +43,12 @@ export const CreateShare = () => {
       .select('id')
       .eq('custom_link', link)
       .single();
-    
+
     if (error && error.code === 'PGRST116') {
-      return true; // Link is available
+      return true;
     }
-    return false; // Link is taken
+
+    return false;
   };
 
   const uploadFile = async (file: File, linkId: string) => {
@@ -51,54 +61,59 @@ export const CreateShare = () => {
       .upload(filePath, file);
 
     if (error) throw error;
+
     return filePath;
   };
 
-  const handleSubmit = async (contentType: 'note' | 'file') => {
-    // Generate random URL if not provided
+  const handleSubmit = async (type: 'note' | 'file') => {
     let finalCustomLink = customLink.trim();
+
     if (!finalCustomLink) {
-      const { data: randomUrl, error: urlError } = await supabase.rpc('generate_random_url');
+      const { data: randomUrl, error: urlError } =
+        await supabase.rpc('generate_random_url');
+
       if (urlError) {
         toast({
-          title: 'Error',
-          description: 'Failed to generate random URL. Please try again.',
+          title: 'Could not create link',
+          description: 'Please try again.',
           variant: 'destructive',
         });
         return;
       }
+
       finalCustomLink = randomUrl;
     } else if (!validateCustomLink(finalCustomLink)) {
       toast({
-        title: 'Invalid Link',
-        description: 'Link must be 3-50 characters and contain only letters, numbers, hyphens, and underscores.',
+        title: 'Invalid link',
+        description:
+          'Use 3–50 characters: letters, numbers, hyphens or underscores.',
         variant: 'destructive',
       });
       return;
     }
 
-    if (!title) {
+    if (!title.trim()) {
       toast({
-        title: 'Title Required',
-        description: 'Please enter a title for your share.',
+        title: 'Title required',
+        description: 'Give your share a title before creating it.',
         variant: 'destructive',
       });
       return;
     }
 
-    if (contentType === 'note' && !noteContent) {
+    if (type === 'note' && !noteContent.trim()) {
       toast({
-        title: 'Content Required',
-        description: 'Please enter some content for your note.',
+        title: 'Your note is empty',
+        description: 'Add some content before creating the share.',
         variant: 'destructive',
       });
       return;
     }
 
-    if (contentType === 'file' && !file) {
+    if (type === 'file' && !file) {
       toast({
-        title: 'File Required',
-        description: 'Please select a file to upload.',
+        title: 'No file selected',
+        description: 'Choose a file before creating the share.',
         variant: 'destructive',
       });
       return;
@@ -108,26 +123,30 @@ export const CreateShare = () => {
 
     try {
       const isAvailable = await checkLinkAvailability(finalCustomLink);
-      
+
       if (!isAvailable) {
         toast({
-          title: 'Link Taken',
-          description: 'This custom link is already in use. Please choose another one.',
+          title: 'Link already exists',
+          description:
+            'That URL is already being used. Try a different one.',
           variant: 'destructive',
         });
+
         setIsLoading(false);
         return;
       }
 
-      const expiresAt = expirationDays ? 
-        new Date(Date.now() + expirationDays * 24 * 60 * 60 * 1000).toISOString() : 
-        null;
+      const expiresAt = expirationDays
+        ? new Date(
+            Date.now() + expirationDays * 24 * 60 * 60 * 1000
+          ).toISOString()
+        : null;
 
-      let shareData = {
+      const shareData = {
         custom_link: finalCustomLink,
-        title,
-        content_type: contentType,
-        note_content: contentType === 'note' ? noteContent : null,
+        title: title.trim(),
+        content_type: type,
+        note_content: type === 'note' ? noteContent : null,
         file_path: null as string | null,
         file_name: null as string | null,
         file_size: null as number | null,
@@ -135,8 +154,7 @@ export const CreateShare = () => {
         max_views: maxViews || null,
       };
 
-      if (contentType === 'file' && file) {
-        // First insert the record to get the ID
+      if (type === 'file' && file) {
         const { data: linkData, error: linkError } = await supabase
           .from('shared_links')
           .insert(shareData)
@@ -145,10 +163,8 @@ export const CreateShare = () => {
 
         if (linkError) throw linkError;
 
-        // Upload the file with the link ID
         const filePath = await uploadFile(file, linkData.id);
-        
-        // Update the record with file information
+
         const { error: updateError } = await supabase
           .from('shared_links')
           .update({
@@ -167,40 +183,46 @@ export const CreateShare = () => {
         if (error) throw error;
       }
 
-      // Store the created share for user reference
       const createdShare = {
         id: finalCustomLink,
-        title,
-        type: contentType as 'note' | 'file',
+        title: title.trim(),
+        type,
         createdAt: new Date().toISOString(),
-        customLink: finalCustomLink
+        customLink: finalCustomLink,
       };
-      
-      const existingShares = JSON.parse(localStorage.getItem('userShares') || '[]');
+
+      const existingShares = JSON.parse(
+        localStorage.getItem('userShares') || '[]'
+      );
+
       existingShares.push(createdShare);
-      localStorage.setItem('userShares', JSON.stringify(existingShares));
+
+      localStorage.setItem(
+        'userShares',
+        JSON.stringify(existingShares)
+      );
 
       const url = `${window.location.origin}/${finalCustomLink}`;
+
       setShareUrl(url);
 
       toast({
-        title: 'Share Created!',
-        description: 'Your shareable link has been created successfully.',
+        title: 'Share created',
+        description: 'Your link is ready.',
       });
 
-      // Reset form
       setCustomLink('');
       setTitle('');
       setNoteContent('');
       setFile(null);
       setExpirationDays('');
       setMaxViews('');
-
     } catch (error) {
       console.error('Error creating share:', error);
+
       toast({
-        title: 'Error',
-        description: 'Failed to create share. Please try again.',
+        title: 'Something went wrong',
+        description: 'The share could not be created. Please try again.',
         variant: 'destructive',
       });
     }
@@ -210,237 +232,610 @@ export const CreateShare = () => {
 
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return '0 Bytes';
+
     const k = 1024;
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+
+    return (
+      parseFloat((bytes / Math.pow(k, i)).toFixed(2)) +
+      ' ' +
+      sizes[i]
+    );
   };
+
+  const clearFile = () => {
+    setFile(null);
+
+    const input = document.getElementById(
+      'file'
+    ) as HTMLInputElement | null;
+
+    if (input) input.value = '';
+  };
+
+  /* ---------------------------------------------------------
+     SUCCESS
+  --------------------------------------------------------- */
 
   if (shareUrl) {
     return (
-      <div className="max-w-2xl mx-auto p-6 animate-fade-in">
-        <Card className="shadow-elegant hover-lift">
-          <CardHeader className="text-center">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-full gradient-primary flex items-center justify-center">
-              <Link2 className="h-8 w-8 text-white" />
-            </div>
-            <CardTitle className="text-2xl text-gradient">Share Created!</CardTitle>
-            <CardDescription>Your content is now available at this link</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="p-4 bg-muted rounded-lg">
-              <Label className="text-sm font-medium">Your shareable link:</Label>
-              <div className="flex gap-2 mt-2">
-                <Input value={shareUrl} readOnly className="font-mono" />
-                <Button
-                  onClick={() => {
-                    navigator.clipboard.writeText(shareUrl);
-                    toast({ title: 'Copied!', description: 'Link copied to clipboard' });
-                  }}
-                  variant="outline"
-                >
-                  Copy
-                </Button>
+      <main className="min-h-screen bg-background">
+        <div className="mx-auto max-w-3xl px-5 py-10 sm:px-8 lg:py-16">
+
+          <button
+            onClick={() => navigate('/')}
+            className="mb-12 inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back home
+          </button>
+
+          <div className="border border-border">
+            <div className="border-b bg-muted/20 px-6 py-5 sm:px-8">
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center bg-primary text-primary-foreground">
+                  <Check className="h-4 w-4" />
+                </div>
+
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                    Share created
+                  </p>
+
+                  <h1 className="mt-1 text-lg font-semibold">
+                    Your link is ready
+                  </h1>
+                </div>
               </div>
             </div>
-            <Button 
-              onClick={() => setShareUrl('')} 
-              className="w-full"
-              variant="outline"
-            >
-              Create Another Share
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
+
+            <div className="space-y-8 p-6 sm:p-8">
+
+              <div>
+                <p className="mb-2 text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                  Share URL
+                </p>
+
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <div className="flex min-w-0 flex-1 items-center border bg-muted/20 px-4">
+                    <span className="truncate font-mono text-sm">
+                      {shareUrl}
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(shareUrl);
+
+                      toast({
+                        title: 'Copied',
+                        description: 'Link copied to clipboard.',
+                      });
+                    }}
+                    className="inline-flex h-11 items-center justify-center gap-2 bg-primary px-5 text-sm font-medium text-primary-foreground"
+                  >
+                    <Copy className="h-4 w-4" />
+                    Copy link
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid gap-px border border-border bg-border sm:grid-cols-3">
+                <div className="bg-background p-4">
+                  <p className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                    Status
+                  </p>
+
+                  <p className="mt-1 text-sm font-medium">
+                    Active
+                  </p>
+                </div>
+
+                <div className="bg-background p-4">
+                  <p className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                    Address
+                  </p>
+
+                  <p className="mt-1 truncate font-mono text-sm">
+                    /{shareUrl.split('/').pop()}
+                  </p>
+                </div>
+
+                <div className="bg-background p-4">
+                  <p className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                    Access
+                  </p>
+
+                  <p className="mt-1 text-sm font-medium">
+                    Public link
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3 border-t pt-6 sm:flex-row">
+                <button
+                  onClick={() => window.open(shareUrl, '_blank')}
+                  className="inline-flex h-11 flex-1 items-center justify-center gap-2 border border-border text-sm font-medium transition-colors hover:bg-muted"
+                >
+                  Open share
+                  <ArrowUpRight className="h-4 w-4" />
+                </button>
+
+                <button
+                  onClick={() => setShareUrl('')}
+                  className="inline-flex h-11 flex-1 items-center justify-center bg-primary text-sm font-medium text-primary-foreground"
+                >
+                  Create another
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
     );
   }
 
+  /* ---------------------------------------------------------
+     CREATE PAGE
+  --------------------------------------------------------- */
+
   return (
-    <div className="max-w-2xl mx-auto p-6 animate-fade-in">
-      <div className="flex items-center mb-6">
-        <Button 
-          variant="ghost" 
-          onClick={() => navigate('/')}
-          className="hover:bg-muted mr-4"
-        >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Home
-        </Button>
-      </div>
-      
-      <Card className="shadow-elegant">
-        <CardHeader className="text-center">
-          <CardTitle className="text-3xl text-gradient">Create Share</CardTitle>
-          <CardDescription>Share notes or files with custom links</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-6">
-            {/* Basic Information */}
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="title">Title</Label>
-                <Input
-                  id="title"
-                  placeholder="Give your share a title..."
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                />
-              </div>
-              
-              <div>
-                <Label htmlFor="customLink">Custom Link (optional)</Label>
-                <div className="flex items-center space-x-2">
-                  <span className="text-sm text-muted-foreground">{window.location.origin}/</span>
-                  <Input
-                    id="customLink"
-                    placeholder="my-awesome-link (leave empty for random)"
-                    value={customLink}
-                    onChange={(e) => setCustomLink(e.target.value.toLowerCase())}
-                    className="flex-1"
-                  />
-                </div>
-                {customLink && !validateCustomLink(customLink) && (
-                  <p className="text-sm text-destructive mt-1">
-                    Link must be 3-50 characters and contain only letters, numbers, hyphens, and underscores.
+    <main className="min-h-screen bg-background">
+
+      {/* Header */}
+      <header className="border-b">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 sm:px-8 lg:px-10">
+          <button
+            onClick={() => navigate('/')}
+            className="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Home
+          </button>
+
+          <div className="text-sm font-semibold tracking-tight">
+            Create share
+          </div>
+
+          <div className="w-[58px]" />
+        </div>
+      </header>
+
+      <div className="mx-auto max-w-7xl px-5 py-10 sm:px-8 lg:py-16 lg:px-10">
+
+        {/* Intro */}
+        <div className="mb-12 max-w-2xl">
+          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+            New share
+          </p>
+
+          <h1 className="mt-3 text-4xl font-semibold tracking-[-0.035em] sm:text-5xl">
+            Create something
+            <br className="hidden sm:block" />
+            worth sharing.
+          </h1>
+
+          <p className="mt-4 max-w-xl text-base leading-7 text-muted-foreground">
+            Add your content, choose how the link behaves, and send it
+            wherever it needs to go.
+          </p>
+        </div>
+
+        {/* Main layout */}
+        <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-16">
+
+          {/* Main form */}
+          <div className="min-w-0">
+
+            {/* Basic information */}
+            <section className="border-t">
+              <div className="grid gap-6 border-b py-8 sm:grid-cols-[180px_1fr]">
+                <div>
+                  <p className="text-sm font-medium">
+                    Basic information
                   </p>
-                )}
-              </div>
-            </div>
 
-            {/* Content Type */}
-            <Tabs defaultValue="note" className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="note" className="flex items-center gap-2">
-                  <FileText className="h-4 w-4" />
-                  Note
-                </TabsTrigger>
-                <TabsTrigger value="file" className="flex items-center gap-2">
-                  <Upload className="h-4 w-4" />
-                  File
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="note" className="space-y-4">
-                <div>
-                  <Label htmlFor="noteContent">Note Content</Label>
-                  <Textarea
-                    id="noteContent"
-                    placeholder="Write your note here..."
-                    value={noteContent}
-                    onChange={(e) => setNoteContent(e.target.value)}
-                    rows={8}
-                    className="resize-none"
-                  />
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    Give your share an identity.
+                  </p>
                 </div>
-                <Button
-                  onClick={() => handleSubmit('note')}
-                  disabled={isLoading}
-                  className="w-full gradient-primary text-white"
-                >
-                  {isLoading ? 'Creating...' : 'Create Note Share'}
-                </Button>
-              </TabsContent>
 
-              <TabsContent value="file" className="space-y-4">
-                <div>
-                  <Label htmlFor="file">Upload File</Label>
-                  <div className="border-2 border-dashed border-border rounded-lg p-6 text-center hover:border-primary transition-colors">
+                <div className="space-y-5">
+
+                  {/* Title */}
+                  <div>
+                    <label
+                      htmlFor="title"
+                      className="mb-2 block text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground"
+                    >
+                      Title
+                    </label>
+
                     <input
-                      id="file"
-                      type="file"
-                      onChange={(e) => setFile(e.target.files?.[0] || null)}
-                      className="hidden"
+                      id="title"
+                      placeholder="e.g. Project notes"
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      className="h-12 w-full border border-border bg-background px-4 text-sm outline-none transition-colors placeholder:text-muted-foreground/50 focus:border-foreground"
                     />
-                    <Label htmlFor="file" className="cursor-pointer">
-                      {file ? (
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-center gap-2">
-                            {file.type.startsWith('image/') ? (
-                              <Image className="h-8 w-8 text-primary" />
-                            ) : (
-                              <FileText className="h-8 w-8 text-primary" />
-                            )}
+                  </div>
+
+                  {/* Custom URL */}
+                  <div>
+                    <label
+                      htmlFor="customLink"
+                      className="mb-2 block text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground"
+                    >
+                      Custom URL
+                    </label>
+
+                    <div className="flex h-12 items-center border border-border bg-background">
+                      <span className="hidden px-3 text-xs text-muted-foreground sm:block">
+                        {window.location.origin}/
+                      </span>
+
+                      <input
+                        id="customLink"
+                        placeholder="my-project"
+                        value={customLink}
+                        onChange={(e) =>
+                          setCustomLink(e.target.value.toLowerCase())
+                        }
+                        className="min-w-0 flex-1 bg-transparent px-4 text-sm outline-none placeholder:text-muted-foreground/50 sm:px-1"
+                      />
+                    </div>
+
+                    <div className="mt-2 flex items-center justify-between">
+                      <p className="text-xs text-muted-foreground">
+                        Leave empty to generate one automatically.
+                      </p>
+
+                      {customLink && (
+                        <span
+                          className={
+                            validateCustomLink(customLink)
+                              ? 'text-xs text-foreground'
+                              : 'text-xs text-destructive'
+                          }
+                        >
+                          {validateCustomLink(customLink)
+                            ? 'Looks good'
+                            : 'Invalid format'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* Content */}
+            <section className="border-b">
+              <div className="grid gap-6 py-8 sm:grid-cols-[180px_1fr]">
+                <div>
+                  <p className="text-sm font-medium">
+                    Content
+                  </p>
+
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    Choose what people will receive.
+                  </p>
+                </div>
+
+                <div>
+
+                  {/* Content switcher */}
+                  <div className="mb-6 grid grid-cols-2 border border-border">
+                    <button
+                      onClick={() => setContentType('note')}
+                      className={`flex h-11 items-center justify-center gap-2 text-sm font-medium transition-colors ${
+                        contentType === 'note'
+                          ? 'bg-primary text-primary-foreground'
+                          : 'hover:bg-muted'
+                      }`}
+                    >
+                      <FileText className="h-4 w-4" />
+                      Note
+                    </button>
+
+                    <button
+                      onClick={() => setContentType('file')}
+                      className={`flex h-11 items-center justify-center gap-2 border-l text-sm font-medium transition-colors ${
+                        contentType === 'file'
+                          ? 'bg-primary text-primary-foreground'
+                          : 'hover:bg-muted'
+                      }`}
+                    >
+                      <Upload className="h-4 w-4" />
+                      File
+                    </button>
+                  </div>
+
+                  {/* Note */}
+                  {contentType === 'note' && (
+                    <div>
+                      <label
+                        htmlFor="noteContent"
+                        className="mb-2 block text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground"
+                      >
+                        Note
+                      </label>
+
+                      <textarea
+                        id="noteContent"
+                        placeholder="Write something..."
+                        value={noteContent}
+                        onChange={(e) =>
+                          setNoteContent(e.target.value)
+                        }
+                        rows={12}
+                        className="w-full resize-none border border-border bg-background p-4 text-sm leading-6 outline-none transition-colors placeholder:text-muted-foreground/50 focus:border-foreground"
+                      />
+
+                      <div className="mt-2 flex justify-between text-xs text-muted-foreground">
+                        <span>
+                          Plain text content
+                        </span>
+
+                        <span>
+                          {noteContent.length} characters
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* File */}
+                  {contentType === 'file' && (
+                    <div>
+                      <input
+                        id="file"
+                        type="file"
+                        onChange={(e) =>
+                          setFile(e.target.files?.[0] || null)
+                        }
+                        className="hidden"
+                      />
+
+                      {!file ? (
+                        <label
+                          htmlFor="file"
+                          className="group flex min-h-[260px] cursor-pointer flex-col items-center justify-center border border-dashed border-border px-6 text-center transition-colors hover:border-foreground hover:bg-muted/20"
+                        >
+                          <div className="mb-5 flex h-12 w-12 items-center justify-center border">
+                            <Upload className="h-5 w-5 text-muted-foreground" />
                           </div>
-                          <p className="font-medium">{file.name}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {formatFileSize(file.size)}
+
+                          <p className="text-sm font-medium">
+                            Choose a file
                           </p>
-                        </div>
+
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Click anywhere here to browse your files
+                          </p>
+                        </label>
                       ) : (
-                        <div className="space-y-2">
-                          <Upload className="h-8 w-8 mx-auto text-muted-foreground" />
-                          <p className="text-muted-foreground">
-                            Click to select a file or drag and drop
-                          </p>
+                        <div className="border border-border">
+                          <div className="flex items-center gap-4 p-5">
+                            <div className="flex h-12 w-12 shrink-0 items-center justify-center border">
+                              {file.type.startsWith('image/') ? (
+                                <Image className="h-5 w-5" />
+                              ) : (
+                                <FileText className="h-5 w-5" />
+                              )}
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-medium">
+                                {file.name}
+                              </p>
+
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {formatFileSize(file.size)}
+                              </p>
+                            </div>
+
+                            <button
+                              onClick={clearFile}
+                              className="p-2 text-muted-foreground transition-colors hover:text-foreground"
+                              aria-label="Remove file"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </div>
                         </div>
                       )}
-                    </Label>
-                  </div>
+                    </div>
+                  )}
                 </div>
-                <Button
-                  onClick={() => handleSubmit('file')}
-                  disabled={isLoading}
-                  className="w-full gradient-primary text-white"
-                >
-                  {isLoading ? 'Uploading...' : 'Create File Share'}
-                </Button>
-              </TabsContent>
-            </Tabs>
+              </div>
+            </section>
 
-            {/* Optional Settings */}
-            <Card className="bg-muted/50">
-              <CardHeader>
-                <CardTitle className="text-lg">Optional Settings</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+            {/* Options */}
+            <section className="border-b">
+              <div className="grid gap-6 py-8 sm:grid-cols-[180px_1fr]">
+                <div>
+                  <p className="text-sm font-medium">
+                    Access
+                  </p>
+
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    Optional limits for this share.
+                  </p>
+                </div>
+
+                <div className="grid gap-5 sm:grid-cols-2">
+
                   <div>
-                    <Label htmlFor="expiration">Expires in (days)</Label>
-                    <Input
-                      id="expiration"
-                      type="number"
-                      placeholder="Never"
-                      value={expirationDays}
-                      onChange={(e) => setExpirationDays(e.target.value ? parseInt(e.target.value) : '')}
-                      min="1"
-                      max="365"
-                    />
+                    <label
+                      htmlFor="expiration"
+                      className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground"
+                    >
+                      <Calendar className="h-3.5 w-3.5" />
+                      Expires after
+                    </label>
+
+                    <div className="flex h-11 items-center border border-border">
+                      <input
+                        id="expiration"
+                        type="number"
+                        min="1"
+                        max="365"
+                        placeholder="Never"
+                        value={expirationDays}
+                        onChange={(e) =>
+                          setExpirationDays(
+                            e.target.value
+                              ? parseInt(e.target.value)
+                              : ''
+                          )
+                        }
+                        className="min-w-0 flex-1 bg-transparent px-3 text-sm outline-none"
+                      />
+
+                      <span className="pr-3 text-xs text-muted-foreground">
+                        days
+                      </span>
+                    </div>
                   </div>
+
                   <div>
-                    <Label htmlFor="maxViews">Max views</Label>
-                    <Input
-                      id="maxViews"
-                      type="number"
-                      placeholder="Unlimited"
-                      value={maxViews}
-                      onChange={(e) => setMaxViews(e.target.value ? parseInt(e.target.value) : '')}
-                      min="1"
-                    />
+                    <label
+                      htmlFor="maxViews"
+                      className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground"
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                      View limit
+                    </label>
+
+                    <div className="flex h-11 items-center border border-border">
+                      <input
+                        id="maxViews"
+                        type="number"
+                        min="1"
+                        placeholder="Unlimited"
+                        value={maxViews}
+                        onChange={(e) =>
+                          setMaxViews(
+                            e.target.value
+                              ? parseInt(e.target.value)
+                              : ''
+                          )
+                        }
+                        className="min-w-0 flex-1 bg-transparent px-3 text-sm outline-none"
+                      />
+
+                      <span className="pr-3 text-xs text-muted-foreground">
+                        views
+                      </span>
+                    </div>
                   </div>
                 </div>
-                
-                {(expirationDays || maxViews) && (
-                  <div className="flex gap-2">
-                    {expirationDays && (
-                      <Badge variant="secondary" className="flex items-center gap-1">
-                        <Calendar className="h-3 w-3" />
-                        Expires in {expirationDays} days
-                      </Badge>
-                    )}
-                    {maxViews && (
-                      <Badge variant="secondary" className="flex items-center gap-1">
-                        <Eye className="h-3 w-3" />
-                        Max {maxViews} views
-                      </Badge>
-                    )}
-                  </div>
+              </div>
+            </section>
+
+            {/* Submit */}
+            <div className="flex flex-col-reverse gap-3 pt-8 sm:flex-row sm:justify-end">
+              <button
+                onClick={() => navigate('/')}
+                className="h-12 border border-border px-6 text-sm font-medium transition-colors hover:bg-muted"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={() => handleSubmit(contentType)}
+                disabled={isLoading}
+                className="group inline-flex h-12 items-center justify-center gap-2 bg-primary px-7 text-sm font-medium text-primary-foreground transition-transform hover:-translate-y-0.5 disabled:pointer-events-none disabled:opacity-50"
+              >
+                {isLoading
+                  ? contentType === 'file'
+                    ? 'Uploading…'
+                    : 'Creating…'
+                  : contentType === 'file'
+                  ? 'Create file share'
+                  : 'Create note share'}
+
+                {!isLoading && (
+                  <ArrowUpRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
                 )}
-              </CardContent>
-            </Card>
+              </button>
+            </div>
           </div>
-        </CardContent>
-      </Card>
+
+          {/* Sidebar */}
+          <aside className="hidden lg:block">
+            <div className="sticky top-8 border border-border">
+
+              <div className="border-b px-5 py-4">
+                <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                  Before you share
+                </p>
+              </div>
+
+              <div className="divide-y">
+                <InfoRow
+                  icon={Link2}
+                  title="Your URL"
+                  description="A custom URL makes the share easier to remember."
+                />
+
+                <InfoRow
+                  icon={Calendar}
+                  title="Expiration"
+                  description="Useful for temporary or time-sensitive content."
+                />
+
+                <InfoRow
+                  icon={Eye}
+                  title="View limit"
+                  description="Stop the link after a chosen number of views."
+                />
+
+                <InfoRow
+                  icon={Shield}
+                  title="Simple access"
+                  description="Anyone with the link can open the share."
+                />
+              </div>
+
+              <div className="border-t bg-muted/20 p-5">
+                <p className="text-xs leading-5 text-muted-foreground">
+                  You can always create another share later. Keep the
+                  settings simple unless you actually need a restriction.
+                </p>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </main>
+  );
+};
+
+interface InfoRowProps {
+  icon: React.ElementType;
+  title: string;
+  description: string;
+}
+
+const InfoRow = ({
+  icon: Icon,
+  title,
+  description,
+}: InfoRowProps) => {
+  return (
+    <div className="p-5">
+      <div className="mb-3 flex h-8 w-8 items-center justify-center border">
+        <Icon className="h-3.5 w-3.5" />
+      </div>
+
+      <p className="text-sm font-medium">{title}</p>
+
+      <p className="mt-1 text-xs leading-5 text-muted-foreground">
+        {description}
+      </p>
     </div>
   );
 };
+```
