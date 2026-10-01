@@ -13,19 +13,6 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
-const navigateWithQuery = (path: string) => {
-  const params = new URLSearchParams(window.location.search);
-  const query = params.toString();
-
-  navigate(query ? path + '?' + query : path);
-};
-
-const isPortfolioEmbed = () => {
-  const params = new URLSearchParams(window.location.search);
-  return params.get('source') === 'yukisf';
-};
-
-
 interface UserShare {
   id: string;
   title: string;
@@ -36,6 +23,19 @@ interface UserShare {
 
 export const HomePage = () => {
   const navigate = useNavigate();
+
+  const navigateWithQuery = (path: string) => {
+    const params = new URLSearchParams(window.location.search);
+    const query = params.toString();
+  
+    navigate(query ? path + '?' + query : path);
+  };
+  
+  const isPortfolioEmbed = () => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('source') === 'yukisf';
+  };
+  
   const [userShares, setUserShares] = useState<UserShare[]>([]);
 
   useEffect(() => {
