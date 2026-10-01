@@ -2,9 +2,6 @@ import React, { useEffect, useState } from 'react';
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -26,6 +23,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useParams, useNavigate } from 'react-router-dom';
+import NotFound from '@/pages/NotFound';
 
 interface SharedLink {
   id: string;
@@ -45,22 +43,35 @@ interface SharedLink {
 export const ViewShare = () => {
   const { linkId } = useParams<{ linkId: string }>();
   const navigate = useNavigate();
+  const { toast } = useToast();
 
   const navigateWithQuery = (path: string) => {
     const params = new URLSearchParams(window.location.search);
     const query = params.toString();
-  
+
     if (query) {
       navigate(path + '?' + query);
     } else {
       navigate(path);
     }
   };
-  
-  const { toast } = useToast();
+
+  const isPortfolioEmbed = () => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('source') === 'yukisf';
+  };
+
+  const getShareUrl = (customLink: string) => {
+    if (isPortfolioEmbed()) {
+      return 'https://yukisf.me/note-share/' + customLink;
+    }
+
+    return window.location.origin + '/' + customLink;
+  };
 
   const [shareData, setShareData] = useState<SharedLink | null>(null);
   const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasIncrementedView, setHasIncrementedView] = useState(false);
   const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
@@ -84,6 +95,7 @@ export const ViewShare = () => {
     try {
       setLoading(true);
       setError(null);
+      setNotFound(false);
 
       await supabase.rpc('cleanup_expired_shares');
 
@@ -95,7 +107,7 @@ export const ViewShare = () => {
 
       if (error) {
         if (error.code === 'PGRST116') {
-          setError('Share not found');
+          setNotFound(true);
         } else {
           setError('Failed to load share');
         }
@@ -104,13 +116,26 @@ export const ViewShare = () => {
         return;
       }
 
-      if (data.expires_at && new Date(data.expires_at) < new Date()) {
+      /*
+       * Expired shares are handled as unavailable rather than
+       * as a 404, because the share did exist.
+       */
+      if (
+        data.expires_at &&
+        new Date(data.expires_at) < new Date()
+      ) {
         setError('This share has expired');
         setLoading(false);
         return;
       }
 
-      if (data.max_views && data.view_count >= data.max_views) {
+      /*
+       * Same for shares that reached their view limit.
+       */
+      if (
+        data.max_views &&
+        data.view_count >= data.max_views
+      ) {
         setError('This share has reached its view limit');
         setLoading(false);
         return;
@@ -149,10 +174,12 @@ export const ViewShare = () => {
 
       if (isImage) {
         try {
-          const { data: fileData, error: fileError } =
-            await supabase.storage
-              .from('shared-files')
-              .download(data.file_path);
+          const {
+            data: fileData,
+            error: fileError,
+          } = await supabase.storage
+            .from('shared-files')
+            .download(data.file_path);
 
           if (!fileError && fileData) {
             const url = URL.createObjectURL(fileData);
@@ -200,14 +227,17 @@ export const ViewShare = () => {
 
       toast({
         title: 'Download started',
-        description: shareData.file_name || 'Your file is being downloaded.',
+        description:
+          shareData.file_name ||
+          'Your file is being downloaded.',
       });
     } catch (err) {
       console.error('Error downloading file:', err);
 
       toast({
         title: 'Download Failed',
-        description: 'Failed to download file. Please try again.',
+        description:
+          'Failed to download file. Please try again.',
         variant: 'destructive',
       });
     }
@@ -224,7 +254,8 @@ export const ViewShare = () => {
 
       toast({
         title: 'Copied!',
-        description: type + ' copied to clipboard.',
+        description:
+          type + ' copied to clipboard.',
       });
 
       setTimeout(() => {
@@ -233,17 +264,18 @@ export const ViewShare = () => {
     } catch {
       toast({
         title: 'Copy Failed',
-        description: 'Failed to copy to clipboard.',
+        description:
+          'Failed to copy to clipboard.',
         variant: 'destructive',
       });
     }
   };
 
   const copyShareLink = () => {
-    const url =
-      window.location.origin +
-      '/' +
-      (shareData?.custom_link || linkId || '');
+    const customLink =
+      shareData?.custom_link || linkId || '';
+
+    const url = getShareUrl(customLink);
 
     copyToClipboard(url, 'Share link');
   };
@@ -252,8 +284,17 @@ export const ViewShare = () => {
     if (bytes === 0) return '0 Bytes';
 
     const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    const sizes = [
+      'Bytes',
+      'KB',
+      'MB',
+      'GB',
+      'TB',
+    ];
+
+    const i = Math.floor(
+      Math.log(bytes) / Math.log(k)
+    );
 
     return (
       parseFloat(
@@ -265,16 +306,15 @@ export const ViewShare = () => {
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString(
-      'en-US',
-      {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      }
-    );
+    return new Date(
+      dateString
+    ).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   };
 
   const getRemainingViews = () => {
@@ -282,7 +322,8 @@ export const ViewShare = () => {
 
     return Math.max(
       0,
-      shareData.max_views - shareData.view_count
+      shareData.max_views -
+        shareData.view_count
     );
   };
 
@@ -296,13 +337,16 @@ export const ViewShare = () => {
     const now = new Date();
 
     const diffTime =
-      expiryDate.getTime() - now.getTime();
+      expiryDate.getTime() -
+      now.getTime();
 
     const diffMinutes = Math.ceil(
       diffTime / (1000 * 60)
     );
 
-    if (diffMinutes <= 0) return 'Expired';
+    if (diffMinutes <= 0) {
+      return 'Expired';
+    }
 
     if (diffMinutes < 60) {
       return diffMinutes + ' min';
@@ -333,81 +377,77 @@ export const ViewShare = () => {
     );
 
   const isPdfFile =
-    shareData?.file_name?.match(/\.pdf$/i);
+    shareData?.file_name?.match(
+      /\.pdf$/i
+    );
 
   const isCodeFile =
     shareData?.file_name?.match(
       /\.(js|jsx|ts|tsx|py|java|c|cpp|cs|html|css|json|xml|sql|md|txt|sh|yml|yaml)$/i
     );
 
+  /*
+   * Loading state
+   */
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
-        {/* Header */}
         <header className="border-b border-border">
           <div className="mx-auto flex min-h-14 w-full max-w-5xl items-center justify-between px-4 sm:px-6">
             <div className="h-4 w-24 animate-pulse bg-muted" />
-  
             <div className="h-8 w-20 animate-pulse bg-muted" />
           </div>
         </header>
-  
+
         <main className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-10">
-          {/* Share header skeleton */}
           <div className="mb-6 border-b border-border pb-6 sm:mb-8 sm:pb-8">
             <div className="mb-4 h-5 w-16 animate-pulse bg-muted" />
-  
+
             <div className="h-8 w-3/4 max-w-xl animate-pulse bg-muted sm:h-9" />
-  
+
             <div className="mt-4 flex flex-wrap gap-4">
               <div className="h-3 w-32 animate-pulse bg-muted" />
               <div className="h-3 w-20 animate-pulse bg-muted" />
             </div>
           </div>
-  
-          {/* Content skeleton */}
+
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_240px]">
             <section className="min-w-0">
               <div className="border border-border bg-card">
-                {/* Toolbar */}
                 <div className="flex items-center justify-between border-b border-border px-4 py-3 sm:px-5">
                   <div className="h-4 w-24 animate-pulse bg-muted" />
                   <div className="h-8 w-16 animate-pulse bg-muted" />
                 </div>
-  
-                {/* Note body */}
+
                 <div className="space-y-3 px-4 py-6 sm:px-6 sm:py-8">
                   <div className="h-4 w-full animate-pulse bg-muted" />
                   <div className="h-4 w-[94%] animate-pulse bg-muted" />
                   <div className="h-4 w-[88%] animate-pulse bg-muted" />
-  
                   <div className="h-4 w-[96%] animate-pulse bg-muted" />
                   <div className="h-4 w-[72%] animate-pulse bg-muted" />
-  
                   <div className="h-4 w-[91%] animate-pulse bg-muted" />
                   <div className="h-4 w-[84%] animate-pulse bg-muted" />
                 </div>
               </div>
             </section>
-  
-            {/* Details skeleton */}
+
             <aside>
               <div className="border border-border bg-card">
                 <div className="border-b border-border px-4 py-3">
                   <div className="h-4 w-24 animate-pulse bg-muted" />
                 </div>
-  
+
                 <div className="divide-y divide-border">
                   <div className="space-y-2 px-4 py-4">
                     <div className="h-3 w-14 animate-pulse bg-muted" />
                     <div className="h-4 w-28 animate-pulse bg-muted" />
                   </div>
-  
+
                   <div className="space-y-2 px-4 py-4">
                     <div className="h-3 w-12 animate-pulse bg-muted" />
                     <div className="h-4 w-20 animate-pulse bg-muted" />
                   </div>
-  
+
                   <div className="space-y-2 px-4 py-4">
                     <div className="h-3 w-20 animate-pulse bg-muted" />
                     <div className="h-4 w-24 animate-pulse bg-muted" />
@@ -421,6 +461,17 @@ export const ViewShare = () => {
     );
   }
 
+  /*
+   * Share does not exist
+   */
+  if (notFound) {
+    return <NotFound />;
+  }
+
+  /*
+   * Other errors:
+   * expired, view limit, database error, etc.
+   */
   if (error) {
     return (
       <div className="min-h-screen bg-background px-4 py-8 sm:px-6 lg:px-8">
@@ -432,9 +483,7 @@ export const ViewShare = () => {
               </div>
 
               <h2 className="text-xl font-semibold tracking-tight">
-                {error === 'Share not found'
-                  ? 'Share not found'
-                  : 'This share is unavailable'}
+                This share is unavailable
               </h2>
 
               <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-muted-foreground">
@@ -444,7 +493,9 @@ export const ViewShare = () => {
               <Button
                 variant="outline"
                 className="mt-6"
-                onClick={() => navigateWithQuery('/')}
+                onClick={() =>
+                  navigateWithQuery('/')
+                }
               >
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Back to NoteShare
@@ -456,10 +507,15 @@ export const ViewShare = () => {
     );
   }
 
-  if (!shareData) return null;
+  if (!shareData) {
+    return null;
+  }
 
-  const remainingViews = getRemainingViews();
-  const expiryText = getTimeUntilExpiry();
+  const remainingViews =
+    getRemainingViews();
+
+  const expiryText =
+    getTimeUntilExpiry();
 
   return (
     <div className="min-h-screen bg-background">
@@ -467,10 +523,13 @@ export const ViewShare = () => {
       <header className="border-b border-border">
         <div className="mx-auto flex min-h-14 w-full max-w-5xl items-center justify-between gap-3 px-4 sm:px-6">
           <button
-            onClick={() => navigateWithQuery('/')}
+            onClick={() =>
+              navigateWithQuery('/')
+            }
             className="flex min-w-0 items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
           >
             <ArrowLeft className="h-4 w-4 shrink-0" />
+
             <span className="truncate">
               NoteShare
             </span>
@@ -487,11 +546,17 @@ export const ViewShare = () => {
             ) : (
               <Link2 className="mr-2 h-4 w-4" />
             )}
+
             <span className="hidden sm:inline">
-              {copied ? 'Copied' : 'Copy link'}
+              {copied
+                ? 'Copied'
+                : 'Copy link'}
             </span>
+
             <span className="sm:hidden">
-              {copied ? 'Copied' : 'Copy'}
+              {copied
+                ? 'Copied'
+                : 'Copy'}
             </span>
           </Button>
         </div>
@@ -507,7 +572,8 @@ export const ViewShare = () => {
                   variant="outline"
                   className="rounded-none"
                 >
-                  {shareData.content_type === 'note' ? (
+                  {shareData.content_type ===
+                  'note' ? (
                     <>
                       <FileText className="mr-1.5 h-3 w-3" />
                       Note
@@ -538,7 +604,9 @@ export const ViewShare = () => {
               <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground sm:text-sm">
                 <span className="flex items-center gap-1.5">
                   <Clock className="h-3.5 w-3.5" />
-                  {formatDate(shareData.created_at)}
+                  {formatDate(
+                    shareData.created_at
+                  )}
                 </span>
 
                 <span className="flex items-center gap-1.5">
@@ -558,7 +626,10 @@ export const ViewShare = () => {
               ) : (
                 <Copy className="mr-2 h-4 w-4" />
               )}
-              {copied ? 'Copied' : 'Share link'}
+
+              {copied
+                ? 'Copied'
+                : 'Share link'}
             </Button>
           </div>
         </div>
@@ -566,9 +637,9 @@ export const ViewShare = () => {
         {/* Main content */}
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_240px] lg:items-start">
           <section className="min-w-0">
-            {shareData.content_type === 'note' ? (
+            {shareData.content_type ===
+            'note' ? (
               <div className="border border-border bg-card">
-                {/* Note toolbar */}
                 <div className="flex flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
                   <div className="flex items-center gap-2 text-sm font-medium">
                     <FileText className="h-4 w-4 text-muted-foreground" />
@@ -580,7 +651,8 @@ export const ViewShare = () => {
                     variant="outline"
                     onClick={() =>
                       copyToClipboard(
-                        shareData.note_content || '',
+                        shareData.note_content ||
+                          '',
                         'Note content'
                       )
                     }
@@ -591,11 +663,13 @@ export const ViewShare = () => {
                     ) : (
                       <Copy className="mr-2 h-3.5 w-3.5" />
                     )}
-                    {copied ? 'Copied' : 'Copy'}
+
+                    {copied
+                      ? 'Copied'
+                      : 'Copy'}
                   </Button>
                 </div>
 
-                {/* Note body */}
                 <div className="overflow-x-auto">
                   <div
                     className={
@@ -611,7 +685,6 @@ export const ViewShare = () => {
               </div>
             ) : (
               <div className="space-y-4">
-                {/* Image preview */}
                 {filePreviewUrl && (
                   <div className="border border-border bg-card">
                     <div className="flex items-center justify-between border-b border-border px-4 py-3">
@@ -628,14 +701,16 @@ export const ViewShare = () => {
                     <div className="flex min-h-[220px] items-center justify-center overflow-hidden bg-muted/30 p-3 sm:min-h-[360px] sm:p-6">
                       <img
                         src={filePreviewUrl}
-                        alt={shareData.file_name || 'Shared image'}
+                        alt={
+                          shareData.file_name ||
+                          'Shared image'
+                        }
                         className="max-h-[70vh] max-w-full object-contain"
                       />
                     </div>
                   </div>
                 )}
 
-                {/* File card */}
                 <div className="border border-border bg-card">
                   <div className="flex flex-col gap-5 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
                     <div className="flex min-w-0 items-center gap-3">
@@ -649,7 +724,8 @@ export const ViewShare = () => {
 
                       <div className="min-w-0">
                         <p className="break-all text-sm font-medium sm:text-base">
-                          {shareData.file_name || 'Shared file'}
+                          {shareData.file_name ||
+                            'Shared file'}
                         </p>
 
                         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
@@ -667,7 +743,9 @@ export const ViewShare = () => {
                             )}
 
                           {isPdfFile && (
-                            <span>PDF document</span>
+                            <span>
+                              PDF document
+                            </span>
                           )}
 
                           {isImageFile && (
@@ -709,6 +787,7 @@ export const ViewShare = () => {
                   <p className="text-xs text-muted-foreground">
                     Created
                   </p>
+
                   <p className="mt-1 text-sm">
                     {formatDate(
                       shareData.created_at
@@ -720,19 +799,24 @@ export const ViewShare = () => {
                   <p className="text-xs text-muted-foreground">
                     Views
                   </p>
+
                   <p className="mt-1 text-sm">
                     {shareData.view_count}
+
                     {shareData.max_views
-                      ? ' / ' + shareData.max_views
+                      ? ' / ' +
+                        shareData.max_views
                       : ''}
                   </p>
                 </div>
 
-                {remainingViews !== null && (
+                {remainingViews !==
+                  null && (
                   <div className="px-4 py-3">
                     <p className="text-xs text-muted-foreground">
                       Remaining views
                     </p>
+
                     <p className="mt-1 text-sm">
                       {remainingViews}
                     </p>
@@ -744,6 +828,7 @@ export const ViewShare = () => {
                     <p className="text-xs text-muted-foreground">
                       Expires
                     </p>
+
                     <p className="mt-1 flex items-center gap-1.5 text-sm">
                       <Calendar className="h-3.5 w-3.5" />
                       {expiryText}
@@ -753,8 +838,8 @@ export const ViewShare = () => {
               </div>
             </div>
 
-            {/* Mobile-friendly action */}
-            {shareData.content_type === 'file' && (
+            {shareData.content_type ===
+              'file' && (
               <Button
                 variant="outline"
                 onClick={downloadFile}
@@ -769,7 +854,8 @@ export const ViewShare = () => {
 
         {/* Warnings */}
         <div className="mt-6 space-y-3">
-          {remainingViews !== null &&
+          {remainingViews !==
+            null &&
             remainingViews <= 5 &&
             remainingViews > 0 && (
               <div className="flex items-start gap-3 border border-yellow-200 bg-yellow-50 px-4 py-3 dark:border-yellow-900 dark:bg-yellow-950/30">
@@ -777,11 +863,14 @@ export const ViewShare = () => {
 
                 <div>
                   <p className="text-sm font-medium text-yellow-900 dark:text-yellow-300">
-                    Limited views remaining
+                    Limited views
+                    remaining
                   </p>
 
                   <p className="mt-0.5 text-xs text-yellow-800 dark:text-yellow-400">
-                    This share can be viewed {remainingViews}{' '}
+                    This share can be
+                    viewed{' '}
+                    {remainingViews}{' '}
                     more{' '}
                     {remainingViews === 1
                       ? 'time'
@@ -794,7 +883,9 @@ export const ViewShare = () => {
           {expiryText &&
             (expiryText === '1 day' ||
               expiryText === '1 hr' ||
-              expiryText.includes('min')) && (
+              expiryText.includes(
+                'min'
+              )) && (
               <div className="flex items-start gap-3 border border-red-200 bg-red-50 px-4 py-3 dark:border-red-900 dark:bg-red-950/30">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-700 dark:text-red-400" />
 
@@ -804,7 +895,8 @@ export const ViewShare = () => {
                   </p>
 
                   <p className="mt-0.5 text-xs text-red-800 dark:text-red-400">
-                    It will expire in {expiryText}.
+                    It will expire in{' '}
+                    {expiryText}.
                   </p>
                 </div>
               </div>
@@ -814,7 +906,9 @@ export const ViewShare = () => {
         {/* Footer */}
         <footer className="mt-10 border-t border-border pt-5 pb-8 text-center">
           <button
-            onClick={() => navigateWithQuery('/')}
+            onClick={() =>
+              navigateWithQuery('/')
+            }
             className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
           >
             Shared with NoteShare
