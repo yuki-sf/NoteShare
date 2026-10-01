@@ -1,4 +1,3 @@
-```tsx
 import React, { useState } from 'react';
 import {
   ArrowLeft,
@@ -838,4 +837,3 @@ const InfoRow = ({
     </div>
   );
 };
-```
