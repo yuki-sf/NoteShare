@@ -472,7 +472,12 @@ export const ViewShare = () => {
    * Other errors:
    * expired, view limit, database error, etc.
    */
+
   if (error) {
+    const isExpired = error === 'This share has expired';
+    const isViewLimitReached =
+      error === 'This share has reached its view limit';
+  
     return (
       <div className="min-h-screen bg-background px-4 py-8 sm:px-6 lg:px-8">
         <div className="mx-auto flex min-h-[70vh] w-full max-w-xl items-center justify-center">
@@ -481,21 +486,27 @@ export const ViewShare = () => {
               <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center border border-destructive/20 bg-destructive/5">
                 <AlertTriangle className="h-6 w-6 text-destructive" />
               </div>
-
+  
               <h2 className="text-xl font-semibold tracking-tight">
-                This share is unavailable
+                {isExpired
+                  ? 'Share has expired'
+                  : isViewLimitReached
+                  ? 'View limit reached'
+                  : 'This share is unavailable'}
               </h2>
-
+  
               <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-muted-foreground">
-                {error}
+                {isExpired
+                  ? 'This share is no longer available because its expiration time has passed.'
+                  : isViewLimitReached
+                  ? 'This share has reached the maximum number of allowed views.'
+                  : error}
               </p>
-
+  
               <Button
                 variant="outline"
                 className="mt-6"
-                onClick={() =>
-                  navigateWithQuery('/')
-                }
+                onClick={() => navigateWithQuery('/')}
               >
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Back to NoteShare
@@ -505,7 +516,7 @@ export const ViewShare = () => {
         </div>
       </div>
     );
-  }
+  }  
 
   if (!shareData) {
     return null;
