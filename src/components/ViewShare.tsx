@@ -330,19 +330,81 @@ export const ViewShare = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background px-4 py-8 sm:px-6 lg:px-8">
-        <div className="mx-auto w-full max-w-3xl">
-          <Card className="border-border shadow-sm">
-            <CardContent className="flex min-h-[280px] items-center justify-center">
-              <div className="flex flex-col items-center gap-4">
-                <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-primary" />
-                <p className="text-sm text-muted-foreground">
-                  Loading share...
-                </p>
+      <div className="min-h-screen bg-background">
+        {/* Header */}
+        <header className="border-b border-border">
+          <div className="mx-auto flex min-h-14 w-full max-w-5xl items-center justify-between px-4 sm:px-6">
+            <div className="h-4 w-24 animate-pulse bg-muted" />
+  
+            <div className="h-8 w-20 animate-pulse bg-muted" />
+          </div>
+        </header>
+  
+        <main className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-10">
+          {/* Share header skeleton */}
+          <div className="mb-6 border-b border-border pb-6 sm:mb-8 sm:pb-8">
+            <div className="mb-4 h-5 w-16 animate-pulse bg-muted" />
+  
+            <div className="h-8 w-3/4 max-w-xl animate-pulse bg-muted sm:h-9" />
+  
+            <div className="mt-4 flex flex-wrap gap-4">
+              <div className="h-3 w-32 animate-pulse bg-muted" />
+              <div className="h-3 w-20 animate-pulse bg-muted" />
+            </div>
+          </div>
+  
+          {/* Content skeleton */}
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_240px]">
+            <section className="min-w-0">
+              <div className="border border-border bg-card">
+                {/* Toolbar */}
+                <div className="flex items-center justify-between border-b border-border px-4 py-3 sm:px-5">
+                  <div className="h-4 w-24 animate-pulse bg-muted" />
+                  <div className="h-8 w-16 animate-pulse bg-muted" />
+                </div>
+  
+                {/* Note body */}
+                <div className="space-y-3 px-4 py-6 sm:px-6 sm:py-8">
+                  <div className="h-4 w-full animate-pulse bg-muted" />
+                  <div className="h-4 w-[94%] animate-pulse bg-muted" />
+                  <div className="h-4 w-[88%] animate-pulse bg-muted" />
+  
+                  <div className="h-4 w-[96%] animate-pulse bg-muted" />
+                  <div className="h-4 w-[72%] animate-pulse bg-muted" />
+  
+                  <div className="h-4 w-[91%] animate-pulse bg-muted" />
+                  <div className="h-4 w-[84%] animate-pulse bg-muted" />
+                </div>
               </div>
-            </CardContent>
-          </Card>
-        </div>
+            </section>
+  
+            {/* Details skeleton */}
+            <aside>
+              <div className="border border-border bg-card">
+                <div className="border-b border-border px-4 py-3">
+                  <div className="h-4 w-24 animate-pulse bg-muted" />
+                </div>
+  
+                <div className="divide-y divide-border">
+                  <div className="space-y-2 px-4 py-4">
+                    <div className="h-3 w-14 animate-pulse bg-muted" />
+                    <div className="h-4 w-28 animate-pulse bg-muted" />
+                  </div>
+  
+                  <div className="space-y-2 px-4 py-4">
+                    <div className="h-3 w-12 animate-pulse bg-muted" />
+                    <div className="h-4 w-20 animate-pulse bg-muted" />
+                  </div>
+  
+                  <div className="space-y-2 px-4 py-4">
+                    <div className="h-3 w-20 animate-pulse bg-muted" />
+                    <div className="h-4 w-24 animate-pulse bg-muted" />
+                  </div>
+                </div>
+              </div>
+            </aside>
+          </div>
+        </main>
       </div>
     );
   }
