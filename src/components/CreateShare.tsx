@@ -491,7 +491,9 @@ export const CreateShare = () => {
 
                     <div className="flex h-12 items-center border border-border bg-background">
                       <span className="hidden px-3 text-xs text-muted-foreground sm:block">
-                        {window.location.origin}/
+                        {isPortfolioEmbed()
+                          ? 'https://yukisf.me/note-share'
+                          : window.location.hostname + '/my-note'}/
                       </span>
 
                       <input
